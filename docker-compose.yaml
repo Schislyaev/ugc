@@ -1,0 +1,120 @@
+version: '3'
+services:
+  db:
+    image: postgres:13-alpine
+    env_file:
+      - ucg_service/.env.example
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+        tag: postgres
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  zookeeper:
+    image: 'confluentinc/cp-zookeeper:latest'
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+        tag: zoo
+    env_file:
+      - ucg_service/env/.env-zoo
+
+  kafka:
+    image: 'confluentinc/cp-kafka:latest'
+    hostname: kafka
+    restart: unless-stopped
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+        tag: kafka
+    depends_on:
+      - zookeeper
+#    ports:
+#      - "9092:9092"
+#      - "9093:9093"
+    env_file:
+      - ucg_service/env/.env-kafka
+
+  clickhouse1:
+    image: yandex/clickhouse-server:latest
+    volumes:
+      - ./ucg_service/etl/clickhouse/node1:/etc/clickhouse-server
+      - ./ucg_service/etl/clickhouse/node1/db-init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+        tag: clickhouse
+#    ports:
+#      - "8123:8123"
+#      - "9000:9000"
+    depends_on:
+      - zookeeper
+    env_file:
+      - ucg_service/.env.example
+
+  bigdata_fastapi:
+    build:
+      context: ucg_service
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+        tag: bigdata_fastapi
+    env_file:
+      - ucg_service/.env.example
+    depends_on:
+      - kafka
+      - clickhouse1
+
+  kafka_to_ch_etl:
+    build:
+      context: ucg_service
+      dockerfile: etl/etl.Dockerfile
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+        tag: bigdata_etl
+    env_file:
+      - ucg_service/.env.example
+    depends_on:
+      - kafka
+      - clickhouse1
+
+  bigdata_nginx:
+    image: nginx:latest
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+        tag: nginx
+    volumes:
+      - ./ucg_service/api/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ucg_service/api/nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - bigdata_fastapi
+    ports:
+      - "80:80"
+
+  mongo:
+    image: mongo:latest
+    command: mongod --dbpath /data/db --port 27017
+    logging:
+      driver: gelf
+      options:
+        gelf-address: "udp://127.0.0.1:12201"
+        tag: mongo
+#    ports:
+#      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  db_data:
+  mongo_data:

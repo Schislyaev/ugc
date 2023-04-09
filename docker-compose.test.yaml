@@ -1,0 +1,40 @@
+version: '3'
+services:
+  mongo:
+    image: mongo:latest
+    command: mongod --dbpath /data/db --port 27017
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  zookeeper:
+    image: 'confluentinc/cp-zookeeper:latest'
+    env_file:
+      - ucg_service/env/.env-zoo
+
+  kafka:
+    image: 'confluentinc/cp-kafka:latest'
+    hostname: kafka
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    env_file:
+      - ucg_service/env/.env-kafka
+
+  bigdata_fastapi:
+    build:
+      context: ucg_service
+    env_file:
+      - ucg_service/.env.example
+    ports:
+      - "8000:8000"
+    depends_on:
+      - kafka
+
+
+volumes:
+  mongo_data:

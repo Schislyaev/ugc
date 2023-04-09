@@ -1,0 +1,100 @@
+version: '3'
+
+services:
+  zookeeper:
+    image: 'confluentinc/cp-zookeeper:latest'
+    env_file:
+      - env/.env-zoo
+  
+  kafka:
+    image: 'confluentinc/cp-kafka:latest'
+    hostname: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    env_file:
+      - env/.env-kafka
+
+  clickhouse1:
+    image: yandex/clickhouse-server:latest
+    volumes:
+      - ./etl/clickhouse/node1:/etc/clickhouse-server
+      - ./etl/clickhouse/node1/db-init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    depends_on:
+      - zookeeper
+    env_file:
+#      - ./clickhouse/.env-ch - тут и далее этот энв файл для установки админских данных
+      - .env.example
+
+  clickhouse2:
+    image: yandex/clickhouse-server:latest
+    volumes:
+      - ./etl/clickhouse/node2:/etc/clickhouse-server
+    depends_on:
+      - zookeeper
+    env_file:
+#      - ./clickhouse/.env-ch
+      - .env.example
+
+  clickhouse3:
+    image: yandex/clickhouse-server:latest
+    volumes:
+      - ./etl/clickhouse/node3:/etc/clickhouse-server
+      - ./etl/clickhouse/node3/db-init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    env_file:
+#      - ./clickhouse/.env-ch
+      - .env.example
+
+  clickhouse4:
+    image: yandex/clickhouse-server:latest
+    volumes:
+      - ./etl/clickhouse/node4:/etc/clickhouse-server
+    depends_on:
+      - zookeeper
+    env_file:
+#      - ./clickhouse/.env-ch
+      - .env.example
+
+  fastapi:
+    build:
+      context: .
+    env_file:
+      - .env.example
+    depends_on:
+      - kafka
+      - clickhouse4
+      - clickhouse3
+      - clickhouse1
+      - clickhouse2
+
+  etl:
+    build:
+      context: .
+      dockerfile: etl/etl.Dockerfile
+    env_file:
+      - .env.example
+    depends_on:
+      - kafka
+      - clickhouse4
+      - clickhouse3
+      - clickhouse1
+      - clickhouse2
+
+  nginx:
+    image: nginx:latest
+    volumes:
+      - ./api/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./api/nginx/conf.d:/etc/nginx/conf.d/:ro
+    depends_on:
+      - fastapi
+    ports:
+      - "8000:8000"

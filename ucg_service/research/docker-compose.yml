@@ -1,0 +1,31 @@
+version: '3'
+
+services:
+  zookeeper:
+    image: 'confluentinc/cp-zookeeper:latest'
+    environment:
+      - ZOOKEEPER_CLIENT_PORT=2181
+      - ALLOW_ANONYMOUS_LOGIN=yes
+
+  clickhouse1:
+    image: yandex/clickhouse-server:latest
+    volumes:
+      - ./clickhouse/node1:/etc/clickhouse-server
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    depends_on:
+      - zookeeper
+
+  clickhouse2:
+    image: yandex/clickhouse-server:latest
+    volumes:
+      - ./clickhouse/node2:/etc/clickhouse-server
+    depends_on:
+      - zookeeper
+
+  vertica1:
+    image: jbfavre/vertica:latest
+    ports:
+      - "5433:5433"
+      - "5444:5444"
